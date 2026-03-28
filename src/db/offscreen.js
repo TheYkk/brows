@@ -135,34 +135,6 @@ function syncFTS(pageId) {
   );
 }
 
-// ── Favicon Cache ──
-
-function cacheFavicon(domain, dataUri) {
-  db.run(
-    'INSERT OR REPLACE INTO favicon_cache (domain, data, cached_at) VALUES (?, ?, ?)',
-    [domain, dataUri, Date.now()]
-  );
-  markDirty();
-}
-
-function hasFavicon(domain) {
-  const r = db.exec('SELECT 1 FROM favicon_cache WHERE domain = ?', [domain]);
-  return r.length > 0 && r[0].values.length > 0;
-}
-
-function getUncachedDomains(limit = 50) {
-  const result = db.exec(
-    `SELECT DISTINCT p.domain FROM pages p
-     LEFT JOIN favicon_cache fc ON p.domain = fc.domain
-     WHERE fc.domain IS NULL
-     ORDER BY p.last_visited_at DESC
-     LIMIT ?`,
-    [limit]
-  );
-  if (!result.length) return [];
-  return result[0].values.map(r => r[0]);
-}
-
 // ── Search ──
 
 function search(query, opts = {}) {

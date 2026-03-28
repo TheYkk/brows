@@ -1,4 +1,4 @@
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 1;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -36,12 +36,6 @@ CREATE TABLE IF NOT EXISTS visits (
     FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS favicon_cache (
-    domain TEXT PRIMARY KEY,
-    data TEXT NOT NULL,
-    cached_at INTEGER NOT NULL
-);
-
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts4(
     title, url, domain, path, meta_description, meta_keywords,
     og_title, og_description,
@@ -55,33 +49,17 @@ CREATE INDEX IF NOT EXISTS idx_visits_page_id ON visits(page_id);
 CREATE INDEX IF NOT EXISTS idx_visits_visited_at ON visits(visited_at);
 `;
 
-function migrateSchema(db, fromVersion) {
-  if (fromVersion < 2) {
-    db.run(`CREATE TABLE IF NOT EXISTS favicon_cache (
-      domain TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      cached_at INTEGER NOT NULL
-    )`);
-  }
-}
-
 function initSchema(db) {
   db.run('PRAGMA journal_mode=WAL;');
   db.run('PRAGMA foreign_keys=ON;');
 
-  const existing = db.exec("SELECT value FROM meta WHERE key='schema_version'");
-  const currentVersion = (existing.length && existing[0].values.length)
-    ? Number(existing[0].values[0][0])
-    : 0;
-
-  if (currentVersion === 0) {
-    const stmts = SCHEMA_SQL.split(';').map(s => s.trim()).filter(Boolean);
-    for (const stmt of stmts) {
-      db.run(stmt + ';');
-    }
-  } else if (currentVersion < SCHEMA_VERSION) {
-    migrateSchema(db, currentVersion);
+  const stmts = SCHEMA_SQL.split(';').map(s => s.trim()).filter(Boolean);
+  for (const stmt of stmts) {
+    db.run(stmt + ';');
   }
 
-  db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+  const existing = db.exec("SELECT value FROM meta WHERE key='schema_version'");
+  if (!existing.length || !existing[0].values.length) {
+    db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+  }
 }
