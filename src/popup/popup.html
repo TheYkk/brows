@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Brows</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="popup-search">
+      <input type="text" class="popup-input" id="popupInput"
+             placeholder="Search history…" autofocus autocomplete="off" spellcheck="false">
+    </div>
+    <ul class="popup-results" id="popupResults"></ul>
+    <div class="popup-footer">
+      <a href="#" id="openFull">Open full history</a>
+    </div>
+  </div>
+  <script src="../shared/messages.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

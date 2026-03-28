@@ -1,0 +1,12 @@
+{
+  "name": "brows",
+  "version": "1.0.0",
+  "description": "Enhanced Chrome history with BM25 search and detailed visit tracking",
+  "private": true,
+  "scripts": {
+    "setup": "node scripts/copy-sqljs.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.11.0"
+  }
+}

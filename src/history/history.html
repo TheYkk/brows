@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History — Brows</title>
+  <link rel="stylesheet" href="history.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" class="search-input" id="searchInput"
+               placeholder="Search your history…" autofocus autocomplete="off" spellcheck="false">
+      </div>
+      <div class="search-meta" id="searchMeta"></div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="filter-section">
+        <div class="filter-title">Date Range</div>
+        <div class="date-filters">
+          <input type="date" class="date-input" id="dateFrom" placeholder="From">
+          <input type="date" class="date-input" id="dateTo" placeholder="To">
+        </div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-title">Top Domains</div>
+        <button class="clear-filter" id="clearDomain">Clear filter</button>
+        <ul class="domain-list" id="domainList"></ul>
+      </div>
+    </aside>
+
+    <main class="main" id="mainContent">
+      <div class="loading" id="loading">Loading history…</div>
+      <ul class="results" id="results" style="display:none"></ul>
+      <div class="empty-state" id="emptyState" style="display:none">
+        <div class="empty-state-icon">&#x1f50d;</div>
+        <div class="empty-state-text">No results found</div>
+      </div>
+      <button class="load-more" id="loadMore" style="display:none">Load more</button>
+    </main>
+
+    <footer class="footer">
+      <span id="statsPages">0 pages</span>
+      <span id="statsVisits">0 visits</span>
+      <span>Brows v1.0</span>
+    </footer>
+  </div>
+
+  <script src="../shared/messages.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="history.js"></script>
+</body>
+</html>

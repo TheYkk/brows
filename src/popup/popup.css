@@ -1,0 +1,136 @@
+:root {
+  --bg: #0f1117;
+  --surface: #171923;
+  --surface-hover: #1e2231;
+  --border: #2a2e3d;
+  --text: #e2e4eb;
+  --text-secondary: #8b8fa3;
+  --text-muted: #5c6072;
+  --accent: #6c8cff;
+  --accent-dim: rgba(108, 140, 255, 0.12);
+  --mark-bg: rgba(108, 140, 255, 0.25);
+  --mark-text: #a3bbff;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --mono: 'SF Mono', 'Fira Code', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 420px;
+  max-height: 520px;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.popup {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.popup-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.popup-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: var(--font);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  outline: none;
+}
+
+.popup-input:focus {
+  border-color: var(--accent);
+}
+
+.popup-input::placeholder {
+  color: var(--text-muted);
+}
+
+.popup-results {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  max-height: 400px;
+}
+
+.popup-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.popup-item:hover, .popup-item.selected {
+  background: var(--surface);
+}
+
+.popup-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup-item-title mark {
+  background: var(--mark-bg);
+  color: var(--mark-text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.popup-item-url {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.popup-item-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.popup-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.popup-footer a {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.popup-footer a:hover {
+  text-decoration: underline;
+}
+
+.popup-empty {
+  padding: 30px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
