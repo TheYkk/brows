@@ -462,3 +462,57 @@ html, body {
 .load-more:hover {
   background: var(--surface-hover);
 }
+
+/* ── Backup Section ── */
+
+.backup-section {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.backup-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-family: var(--font);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.15s;
+}
+
+.backup-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.backup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.backup-btn svg {
+  flex-shrink: 0;
+}
+
+.backup-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  min-height: 16px;
+}
+
+.backup-status.success {
+  color: #4ade80;
+}
+
+.backup-status.error {
+  color: var(--danger);
+}

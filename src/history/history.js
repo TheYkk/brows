@@ -322,12 +322,99 @@
     }
   }
 
+  // ── Export / Import ──
+
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
+  const backupStatus = document.getElementById('backupStatus');
+
+  exportBtn.addEventListener('click', async () => {
+    exportBtn.disabled = true;
+    backupStatus.textContent = 'Exporting...';
+    backupStatus.className = 'backup-status';
+
+    try {
+      const resp = await send(MSG.EXPORT_DB);
+      if (!resp || resp.error || !resp.data) {
+        throw new Error(resp?.error || 'Export failed');
+      }
+
+      const bytes = new Uint8Array(resp.data);
+      const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
+      const url = URL.createObjectURL(blob);
+      const date = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `brows-history-${date}.db`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      const sizeKB = (bytes.length / 1024).toFixed(0);
+      backupStatus.textContent = `Exported ${sizeKB} KB`;
+      backupStatus.className = 'backup-status success';
+    } catch (e) {
+      backupStatus.textContent = `Export failed: ${e.message}`;
+      backupStatus.className = 'backup-status error';
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
+  importBtn.addEventListener('click', () => importFile.click());
+
+  importFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    importFile.value = '';
+
+    const confirmed = confirm(
+      `Replace current history with "${file.name}"?\n\nThis will overwrite all existing data. Make sure you have an export of your current data first.`
+    );
+    if (!confirmed) return;
+
+    importBtn.disabled = true;
+    backupStatus.textContent = 'Importing...';
+    backupStatus.className = 'backup-status';
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(buffer));
+      const resp = await send(MSG.IMPORT_DB, { bytes });
+
+      if (!resp || resp.error) {
+        throw new Error(resp?.error || 'Import failed');
+      }
+
+      backupStatus.textContent = `Imported: ${(resp.totalPages || 0).toLocaleString()} pages, ${(resp.totalVisits || 0).toLocaleString()} visits`;
+      backupStatus.className = 'backup-status success';
+
+      await runSearch(false);
+      await loadDomains();
+      await loadStats();
+    } catch (e) {
+      backupStatus.textContent = `Import failed: ${e.message}`;
+      backupStatus.className = 'backup-status error';
+    } finally {
+      importBtn.disabled = false;
+    }
+  });
+
+  async function loadBackupStatus() {
+    const stored = await chrome.storage.local.get(['brows-backup-time']);
+    const ts = stored['brows-backup-time'];
+    if (ts) {
+      backupStatus.textContent = `Last auto-backup: ${timeAgo(ts)}`;
+    }
+  }
+
   // ── Init ──
 
   async function init() {
     await runSearch(false);
     await loadDomains();
     await loadStats();
+    await loadBackupStatus();
   }
 
   // Retry init until DB is ready

@@ -9,7 +9,10 @@
     "tabs",
     "activeTab",
     "storage",
-    "offscreen"
+    "unlimitedStorage",
+    "offscreen",
+    "alarms",
+    "downloads"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {

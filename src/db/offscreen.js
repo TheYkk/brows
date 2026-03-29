@@ -10,12 +10,22 @@ async function initDB() {
   const saved = await loadDatabase();
   if (saved) {
     db = new SQL.Database(new Uint8Array(saved));
+    console.log('[brows] DB loaded from IndexedDB');
   } else {
-    db = new SQL.Database();
+    // IndexedDB empty — try recovering from chrome.storage.local backup
+    const fallback = await new Promise((resolve) => {
+      chrome.storage.local.get(['brows-backup'], (r) => resolve(r['brows-backup']));
+    });
+    if (fallback && fallback.length) {
+      db = new SQL.Database(new Uint8Array(fallback));
+      console.log('[brows] DB restored from chrome.storage.local backup');
+    } else {
+      db = new SQL.Database();
+      console.log('[brows] DB created fresh');
+    }
   }
   initSchema(db);
   scheduleSave();
-  console.log('[brows] DB initialized');
 }
 
 function markDirty() {
@@ -338,6 +348,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         bulkImport(msg.data.entries);
         await forceSave();
         return { ok: true };
+
+      case MSG.EXPORT_DB: {
+        await forceSave();
+        const bytes = db.export();
+        return { data: Array.from(bytes) };
+      }
+
+      case MSG.IMPORT_DB: {
+        const SQL = await initSqlJs({
+          locateFile: () => chrome.runtime.getURL('lib/sql-wasm.wasm'),
+        });
+        const incoming = new Uint8Array(msg.data.bytes);
+        const newDb = new SQL.Database(incoming);
+        // Verify the imported DB has the expected tables
+        const check = newDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='pages'");
+        if (!check.length || !check[0].values.length) {
+          newDb.close();
+          return { error: 'Invalid database file: missing pages table' };
+        }
+        if (db) db.close();
+        db = newDb;
+        await forceSave();
+        const stats = getStats();
+        return { ok: true, ...stats };
+      }
 
       default:
         return null;

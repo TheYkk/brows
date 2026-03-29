@@ -140,7 +140,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Forward UI messages (search, stats, etc.) to offscreen DB
   if ([MSG.SEARCH, MSG.GET_RECENT, MSG.GET_VISITS, MSG.GET_STATS,
-       MSG.GET_TOP_DOMAINS, MSG.DELETE_PAGE, MSG.DELETE_ALL].includes(msg.type)) {
+       MSG.GET_TOP_DOMAINS, MSG.DELETE_PAGE, MSG.DELETE_ALL,
+       MSG.EXPORT_DB, MSG.IMPORT_DB].includes(msg.type)) {
     sendToDB(msg)
       .then(r => sendResponse(r))
       .catch(() => sendResponse({ error: 'DB unavailable' }));
@@ -200,6 +201,49 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.error('[brows] history import failed:', e);
   }
 });
+
+// ── Automatic Backup ──
+
+const BACKUP_ALARM = 'brows-auto-backup';
+const BACKUP_INTERVAL_MIN = 360; // 6 hours
+
+chrome.alarms.create(BACKUP_ALARM, { periodInMinutes: BACKUP_INTERVAL_MIN });
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== BACKUP_ALARM) return;
+  await runAutoBackup();
+});
+
+async function runAutoBackup() {
+  try {
+    const resp = await sendToDB({ type: MSG.EXPORT_DB });
+    if (!resp || resp.error || !resp.data) return;
+
+    const bytes = new Uint8Array(resp.data);
+
+    // Layer 1: redundant copy in chrome.storage.local (separate from IndexedDB)
+    await chrome.storage.local.set({
+      'brows-backup': Array.from(bytes),
+      'brows-backup-time': Date.now(),
+    });
+
+    // Layer 2: save a real file to the downloads folder
+    const blob = new Blob([bytes], { type: 'application/x-sqlite3' });
+    const url = URL.createObjectURL(blob);
+    chrome.downloads.download({
+      url,
+      filename: 'brows-history-backup.db',
+      conflictAction: 'overwrite',
+      saveAs: false,
+    }, () => {
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    });
+
+    console.log(`[brows] auto-backup complete (${(bytes.length / 1024).toFixed(0)} KB)`);
+  } catch (e) {
+    console.error('[brows] auto-backup failed:', e);
+  }
+}
 
 // ── Startup ──
 
