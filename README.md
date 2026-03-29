@@ -28,6 +28,7 @@ Requires a Node.js package manager (npm, bun, pnpm, or yarn) to install the sql.
 git clone <repo-url> brows
 cd brows
 npm install   # or: bun install
+npm run setup # optional: copy sql.js into lib/ (same as the manual cp below)
 ```
 
 sql.js WASM files are already copied to `lib/`. If you need to refresh them:
@@ -48,8 +49,11 @@ Then load in Chrome:
 
 ```
 brows/
+├── LICENSE                              # MIT license text
 ├── manifest.json                        # MV3 manifest
 ├── package.json
+├── scripts/
+│   └── copy-sqljs.js                    # Copies sql.js dist files into lib/
 ├── lib/
 │   ├── sql-wasm.js                      # sql.js library
 │   └── sql-wasm.wasm                    # SQLite compiled to WebAssembly
@@ -177,4 +181,4 @@ To migrate history to a new machine or after a reinstall, use **Export database*
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
