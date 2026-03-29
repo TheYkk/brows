@@ -49,17 +49,54 @@ CREATE INDEX IF NOT EXISTS idx_visits_page_id ON visits(page_id);
 CREATE INDEX IF NOT EXISTS idx_visits_visited_at ON visits(visited_at);
 `;
 
+// Each migration is a function that receives the db handle.
+// Index = version it migrates FROM (e.g. MIGRATIONS[1] upgrades v1 → v2).
+const MIGRATIONS = [
+  // placeholder for index 0 (no v0 → v1 migration; v1 is the baseline)
+];
+
+function getSchemaVersion(db) {
+  try {
+    const res = db.exec("SELECT value FROM meta WHERE key='schema_version'");
+    if (res.length && res[0].values.length) {
+      return parseInt(res[0].values[0][0], 10) || 0;
+    }
+  } catch {
+    // meta table may not exist yet
+  }
+  return 0;
+}
+
 function initSchema(db) {
-  db.run('PRAGMA journal_mode=WAL;');
   db.run('PRAGMA foreign_keys=ON;');
 
-  const stmts = SCHEMA_SQL.split(';').map(s => s.trim()).filter(Boolean);
-  for (const stmt of stmts) {
-    db.run(stmt + ';');
+  const currentVersion = getSchemaVersion(db);
+
+  if (currentVersion === 0) {
+    const stmts = SCHEMA_SQL.split(';').map(s => s.trim()).filter(Boolean);
+    for (const stmt of stmts) {
+      db.run(stmt + ';');
+    }
+    db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+    return;
   }
 
-  const existing = db.exec("SELECT value FROM meta WHERE key='schema_version'");
-  if (!existing.length || !existing[0].values.length) {
-    db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
+  for (let v = currentVersion; v < SCHEMA_VERSION; v++) {
+    const migrate = MIGRATIONS[v];
+    if (!migrate) {
+      console.warn(`[brows] no migration for v${v} → v${v + 1}, skipping`);
+      continue;
+    }
+    console.log(`[brows] migrating schema v${v} → v${v + 1}`);
+    db.run('BEGIN TRANSACTION');
+    try {
+      migrate(db);
+      db.run("UPDATE meta SET value = ? WHERE key = 'schema_version'", [String(v + 1)]);
+      db.run('COMMIT');
+    } catch (e) {
+      db.run('ROLLBACK');
+      console.error(`[brows] migration v${v} → v${v + 1} failed:`, e);
+      throw e;
+    }
   }
 }

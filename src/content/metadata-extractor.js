@@ -27,6 +27,7 @@
     ogImage: getMeta('og:image'),
     language: document.documentElement.lang || '',
     faviconUrl: getFavicon(),
+    referrer: document.referrer || '',
   };
 
   const hasContent = data.metaDescription || data.metaKeywords ||
@@ -34,6 +35,6 @@
     data.language || data.faviconUrl;
 
   if (hasContent || data.title) {
-    chrome.runtime.sendMessage({ type: 'PAGE_METADATA', data }).catch(() => {});
+    chrome.runtime.sendMessage({ type: MSG.PAGE_METADATA, data }).catch(() => {});
   }
 })();

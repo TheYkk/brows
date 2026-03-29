@@ -91,10 +91,12 @@ function upsertPage(data) {
     'INSERT INTO visits (page_id, visited_at, transition_type, referrer_url) VALUES (?, ?, ?, ?)',
     [pageId, now, data.transitionType || null, data.referrerUrl || null]
   );
+  const visitRes = db.exec('SELECT last_insert_rowid()');
+  const visitId = visitRes[0].values[0][0];
 
   syncFTS(pageId);
   markDirty();
-  return pageId;
+  return { pageId, visitId };
 }
 
 function updateMetadata(data) {
@@ -125,6 +127,14 @@ function updateMetadata(data) {
       pageId,
     ]
   );
+
+  if (data.referrer) {
+    db.run(
+      `UPDATE visits SET referrer_url = ?
+       WHERE id = (SELECT id FROM visits WHERE page_id = ? ORDER BY visited_at DESC LIMIT 1)`,
+      [data.referrer, pageId]
+    );
+  }
 
   syncFTS(pageId);
   markDirty();
@@ -159,8 +169,18 @@ function search(query, opts = {}) {
     .map(t => t.replace(/['"()*:\\^]/g, ''))
     .filter(Boolean);
   if (!terms.length) return getRecent(limit, offset, opts);
-  const ftsQuery = terms.map(t => `${t}*`).join(' ');
 
+  const ftsQuery = terms.map(t => `${t}*`).join(' ');
+  const results = ftsSearch(ftsQuery, limit, offset);
+  if (results.length > 0) return results;
+
+  const fuzzyResults = fuzzySearch(terms, limit, offset);
+  if (fuzzyResults.length > 0) return fuzzyResults;
+
+  return getRecent(limit, offset, opts);
+}
+
+function ftsSearch(ftsQuery, limit, offset) {
   try {
     const stmt = db.prepare(
       "SELECT docid, matchinfo(pages_fts, 'pcnalx') as info FROM pages_fts WHERE pages_fts MATCH ?"
@@ -168,45 +188,121 @@ function search(query, opts = {}) {
     stmt.bind([ftsQuery]);
 
     const scored = [];
-    while (stmt.step()) {
-      const row = stmt.get();
-      const docid = row[0];
-      const infoBytes = row[1];
-      scored.push({ docid, score: computeBM25(new Uint8Array(infoBytes), COLUMN_WEIGHTS) });
+    try {
+      while (stmt.step()) {
+        const row = stmt.get();
+        scored.push({
+          docid: row[0],
+          score: computeBM25(new Uint8Array(row[1]), COLUMN_WEIGHTS),
+        });
+      }
+    } finally {
+      stmt.free();
     }
-    stmt.free();
 
     scored.sort((a, b) => b.score - a.score);
     const pageIds = scored.slice(offset, offset + limit).map(s => s.docid);
     if (!pageIds.length) return [];
 
-    const placeholders = pageIds.map(() => '?').join(',');
-    const pagesResult = db.exec(
-      `SELECT * FROM pages WHERE id IN (${placeholders})`,
-      pageIds
+    return fetchPagesByIds(pageIds, scored);
+  } catch (e) {
+    console.error('[brows] FTS search error:', e);
+    return [];
+  }
+}
+
+function fuzzySearch(terms, limit, offset) {
+  const prefixes = terms
+    .map(t => t.substring(0, Math.max(3, Math.ceil(t.length * 0.7))))
+    .filter(t => t.length >= 2);
+  if (!prefixes.length) return [];
+
+  const ftsQuery = prefixes.map(p => `${p}*`).join(' OR ');
+
+  try {
+    const stmt = db.prepare(
+      "SELECT docid FROM pages_fts WHERE pages_fts MATCH ?"
     );
+    stmt.bind([ftsQuery]);
 
-    if (!pagesResult.length) return [];
-
-    const cols = pagesResult[0].columns;
-    const pageMap = {};
-    for (const row of pagesResult[0].values) {
-      const obj = {};
-      cols.forEach((c, i) => { obj[c] = row[i]; });
-      pageMap[obj.id] = obj;
+    const candidateIds = [];
+    try {
+      while (stmt.step()) {
+        candidateIds.push(stmt.get()[0]);
+        if (candidateIds.length >= 500) break;
+      }
+    } finally {
+      stmt.free();
     }
 
-    return pageIds
-      .filter(id => pageMap[id])
-      .map(id => {
-        const p = pageMap[id];
-        const s = scored.find(x => x.docid === id);
-        return { ...p, _score: s ? s.score : 0 };
-      });
+    if (!candidateIds.length) return [];
+
+    const placeholders = candidateIds.map(() => '?').join(',');
+    const result = db.exec(
+      `SELECT * FROM pages WHERE id IN (${placeholders})`,
+      candidateIds
+    );
+    if (!result.length) return [];
+
+    const cols = result[0].columns;
+    const scored = [];
+
+    for (const row of result[0].values) {
+      const obj = {};
+      cols.forEach((c, i) => { obj[c] = row[i]; });
+
+      const fields = [obj.title, obj.url, obj.domain, obj.path,
+        obj.meta_description, obj.meta_keywords, obj.og_title, obj.og_description]
+        .filter(Boolean).join(' ');
+
+      let totalDist = 0;
+      let allMatched = true;
+
+      for (const term of terms) {
+        const dist = bestFuzzyDistance(term, fields);
+        if (dist > fuzzyEditThreshold(term)) {
+          allMatched = false;
+          break;
+        }
+        totalDist += dist;
+      }
+
+      if (allMatched) {
+        obj._score = 1 / (1 + totalDist);
+        scored.push(obj);
+      }
+    }
+
+    scored.sort((a, b) => b._score - a._score);
+    return scored.slice(offset, offset + limit);
   } catch (e) {
-    console.error('[brows] search error:', e);
-    return getRecent(limit, offset, opts);
+    console.error('[brows] fuzzy search error:', e);
+    return [];
   }
+}
+
+function fetchPagesByIds(pageIds, scored) {
+  const placeholders = pageIds.map(() => '?').join(',');
+  const pagesResult = db.exec(
+    `SELECT * FROM pages WHERE id IN (${placeholders})`,
+    pageIds
+  );
+
+  if (!pagesResult.length) return [];
+
+  const scoreMap = new Map(scored.map(s => [s.docid, s.score]));
+
+  const cols = pagesResult[0].columns;
+  const pageMap = new Map();
+  for (const row of pagesResult[0].values) {
+    const obj = {};
+    cols.forEach((c, i) => { obj[c] = row[i]; });
+    pageMap.set(obj.id, obj);
+  }
+
+  return pageIds
+    .filter(id => pageMap.has(id))
+    .map(id => ({ ...pageMap.get(id), _score: scoreMap.get(id) || 0 }));
 }
 
 function getRecent(limit = 50, offset = 0, opts = {}) {
@@ -316,7 +412,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const handle = async () => {
     switch (msg.type) {
       case MSG.PAGE_VISITED:
-        return { pageId: upsertPage(msg.data) };
+        return upsertPage(msg.data);
 
       case MSG.PAGE_METADATA:
         updateMetadata(msg.data);

@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content/metadata-extractor.js"],
+      "js": ["src/shared/messages.js", "src/content/metadata-extractor.js"],
       "run_at": "document_idle"
     }
   ],

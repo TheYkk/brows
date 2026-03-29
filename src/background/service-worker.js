@@ -50,22 +50,23 @@ function sleep(ms) {
 
 let activeTabInfo = { tabId: null, url: null, startTime: null, visitId: null };
 
-function startTracking(tabId, url) {
-  finishTracking();
-  activeTabInfo = { tabId, url, startTime: Date.now(), visitId: null };
+function beginTracking(tabId, url, visitId) {
+  activeTabInfo = { tabId, url, startTime: Date.now(), visitId: visitId || null };
 }
 
 function finishTracking() {
-  if (activeTabInfo.tabId && activeTabInfo.startTime) {
-    const duration = Date.now() - activeTabInfo.startTime;
-    if (duration > 1000 && activeTabInfo.url) {
+  const prev = activeTabInfo;
+  activeTabInfo = { tabId: null, url: null, startTime: null, visitId: null };
+
+  if (prev.tabId && prev.startTime && prev.visitId) {
+    const duration = Date.now() - prev.startTime;
+    if (duration > 1000) {
       sendToDB({
         type: MSG.UPDATE_DURATION,
-        data: { visitId: activeTabInfo.visitId, durationMs: duration },
+        data: { visitId: prev.visitId, durationMs: duration },
       }).catch(() => {});
     }
   }
-  activeTabInfo = { tabId: null, url: null, startTime: null, visitId: null };
 }
 
 // ── Visit Capture ──
@@ -90,6 +91,8 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   pendingTransitions.delete(details.tabId);
 
   try {
+    finishTracking();
+
     const tab = await chrome.tabs.get(details.tabId);
     const url = new URL(details.url);
 
@@ -104,11 +107,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
     };
 
     const result = await sendToDB({ type: MSG.PAGE_VISITED, data });
-    if (result && result.pageId) {
-      activeTabInfo.visitId = result.pageId;
-    }
-
-    startTracking(details.tabId, details.url);
+    beginTracking(details.tabId, details.url, result?.visitId);
   } catch (e) {
     // Tab may have been closed
   }
@@ -118,11 +117,10 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
 chrome.tabs.onActivated.addListener(async (info) => {
   try {
+    finishTracking();
     const tab = await chrome.tabs.get(info.tabId);
     if (isTrackable(tab.url)) {
-      startTracking(info.tabId, tab.url);
-    } else {
-      finishTracking();
+      beginTracking(info.tabId, tab.url, null);
     }
   } catch {
     finishTracking();
@@ -186,15 +184,20 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
     if (entries.length) {
       const BATCH = 500;
+      let imported = 0;
       for (let i = 0; i < entries.length; i += BATCH) {
-        await sendToDB({
+        const resp = await sendToDB({
           type: MSG.IMPORT_HISTORY,
           data: { entries: entries.slice(i, i + BATCH) },
         });
+        if (resp && resp.error) {
+          console.warn(`[brows] import batch ${i}–${i + BATCH} failed: ${resp.error}`);
+        } else {
+          imported += Math.min(BATCH, entries.length - i);
+        }
       }
+      console.log(`[brows] imported ${imported}/${entries.length} history items`);
     }
-
-    console.log(`[brows] imported ${entries.length} history items`);
   } catch (e) {
     console.error('[brows] history import failed:', e);
   }
@@ -219,11 +222,17 @@ async function runAutoBackup() {
 
     const bytes = new Uint8Array(resp.data);
 
-    // Layer 1: redundant copy in chrome.storage.local (separate from IndexedDB)
-    await chrome.storage.local.set({
-      'brows-backup': Array.from(bytes),
-      'brows-backup-time': Date.now(),
-    });
+    // Layer 1: redundant copy in chrome.storage.local
+    // unlimitedStorage lifts the quota; try/catch so a failure here
+    // doesn't prevent the file backup below.
+    try {
+      await chrome.storage.local.set({
+        'brows-backup': Array.from(bytes),
+        'brows-backup-time': Date.now(),
+      });
+    } catch (e) {
+      console.warn('[brows] storage.local backup failed (non-fatal):', e);
+    }
 
     // Layer 2: save a real file to the downloads folder
     const blob = new Blob([bytes], { type: 'application/x-sqlite3' });

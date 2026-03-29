@@ -35,6 +35,51 @@ function parseMatchInfo(uint8arr) {
   return result;
 }
 
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const m = a.length, n = b.length;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        curr[j] = prev[j - 1];
+      } else {
+        curr[j] = 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+      }
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+function bestFuzzyDistance(term, text) {
+  if (!text) return Infinity;
+  const q = term.toLowerCase();
+  const words = text.toLowerCase().split(/[\s\-_./,:;!?@#&=+~()[\]{}'"]+/);
+  let best = Infinity;
+  for (const w of words) {
+    if (!w) continue;
+    if (Math.abs(w.length - q.length) > 3) continue;
+    const d = levenshtein(q, w);
+    if (d < best) best = d;
+    if (d === 0) return 0;
+  }
+  return best;
+}
+
+function fuzzyEditThreshold(term) {
+  if (term.length <= 4) return 1;
+  if (term.length <= 7) return 2;
+  return 3;
+}
+
 function computeBM25(matchinfoRaw, weights) {
   const mi = parseMatchInfo(matchinfoRaw);
   const p = mi[0];
