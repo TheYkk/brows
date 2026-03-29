@@ -2,6 +2,7 @@
   "name": "brows",
   "version": "1.0.0",
   "description": "Enhanced Chrome history with BM25 search and detailed visit tracking",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "setup": "node scripts/copy-sqljs.js"
