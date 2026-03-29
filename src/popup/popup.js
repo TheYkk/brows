@@ -1,11 +1,18 @@
 (function () {
+  const PAGE_SIZE = 25;
+
   const input = document.getElementById('popupInput');
   const resultsList = document.getElementById('popupResults');
+  const popupResultsWrap = document.getElementById('popupResultsWrap');
+  const popupScrollSentinel = document.getElementById('popupScrollSentinel');
   const openFullLink = document.getElementById('openFull');
 
   let results = [];
   let selectedIndex = -1;
   let currentQuery = '';
+  let offset = 0;
+  let hasMore = true;
+  let loadingMore = false;
 
   function send(type, data) {
     return new Promise((resolve) => {
@@ -16,26 +23,60 @@
   }
 
   async function runSearch() {
-    const query = input.value.trim();
-    currentQuery = query;
+    offset = 0;
+    hasMore = true;
+    results = [];
     selectedIndex = -1;
+    currentQuery = input.value.trim();
 
+    const opts = { limit: PAGE_SIZE, offset: 0 };
     let response;
-    if (query) {
-      response = await send(MSG.SEARCH, { query, opts: { limit: 10 } });
+    if (currentQuery) {
+      response = await send(MSG.SEARCH, { query: currentQuery, opts });
     } else {
-      response = await send(MSG.GET_RECENT, { limit: 10, offset: 0, opts: {} });
+      response = await send(MSG.GET_RECENT, { limit: PAGE_SIZE, offset: 0, opts: {} });
     }
 
-    results = response.results || [];
+    const batch = response.results || [];
+    if (batch.length < PAGE_SIZE) hasMore = false;
+    results = batch;
+    offset = results.length;
     render();
+  }
+
+  async function loadMore() {
+    if (!hasMore || loadingMore) return;
+    const query = input.value.trim();
+    if (query !== currentQuery) return;
+
+    loadingMore = true;
+    try {
+      const opts = { limit: PAGE_SIZE, offset };
+      let response;
+      if (query) {
+        response = await send(MSG.SEARCH, { query, opts });
+      } else {
+        response = await send(MSG.GET_RECENT, { limit: PAGE_SIZE, offset, opts: {} });
+      }
+
+      const batch = response.results || [];
+      if (batch.length < PAGE_SIZE) hasMore = false;
+      results = results.concat(batch);
+      offset = results.length;
+      render();
+    } finally {
+      loadingMore = false;
+    }
   }
 
   function render() {
     if (!results.length) {
-      resultsList.innerHTML = '<div class="popup-empty">No results</div>';
+      resultsList.innerHTML = '<li class="popup-empty">No results</li>';
+      popupScrollSentinel.style.display = 'none';
       return;
     }
+
+    popupScrollSentinel.style.display = hasMore ? 'block' : 'none';
 
     const terms = currentQuery ? currentQuery.trim().split(/\s+/) : [];
 
@@ -68,6 +109,18 @@
 
   const debouncedSearch = debounce(runSearch, 150);
   input.addEventListener('input', debouncedSearch);
+
+  const scrollObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && hasMore && !loadingMore) {
+          loadMore();
+        }
+      }
+    },
+    { root: popupResultsWrap, rootMargin: '120px', threshold: 0 }
+  );
+  scrollObserver.observe(popupScrollSentinel);
 
   resultsList.addEventListener('click', (e) => {
     const item = e.target.closest('.popup-item');

@@ -8,7 +8,8 @@
   const resultsList = document.getElementById('results');
   const emptyState = document.getElementById('emptyState');
   const loadingEl = document.getElementById('loading');
-  const loadMoreBtn = document.getElementById('loadMore');
+  const mainContent = document.getElementById('mainContent');
+  const scrollSentinel = document.getElementById('scrollSentinel');
   const domainList = document.getElementById('domainList');
   const clearDomainBtn = document.getElementById('clearDomain');
   const dateFrom = document.getElementById('dateFrom');
@@ -25,6 +26,7 @@
   let offset = 0;
   let hasMore = true;
   let expandedPageId = null;
+  let loadingMore = false;
 
   // ── Messaging ──
 
@@ -39,41 +41,48 @@
   // ── Search ──
 
   async function runSearch(append) {
-    if (!append) {
+    if (append) {
+      if (!hasMore || loadingMore) return;
+      loadingMore = true;
+    } else {
       offset = 0;
       currentResults = [];
       hasMore = true;
     }
 
-    const opts = { limit: PAGE_SIZE, offset };
-    if (activeDomain) opts.domain = activeDomain;
+    try {
+      const opts = { limit: PAGE_SIZE, offset };
+      if (activeDomain) opts.domain = activeDomain;
 
-    const from = dateFrom.value;
-    const to = dateTo.value;
-    if (from) opts.startDate = new Date(from).getTime();
-    if (to) opts.endDate = new Date(to + 'T23:59:59').getTime();
+      const from = dateFrom.value;
+      const to = dateTo.value;
+      if (from) opts.startDate = new Date(from).getTime();
+      if (to) opts.endDate = new Date(to + 'T23:59:59').getTime();
 
-    const query = searchInput.value.trim();
-    currentQuery = query;
+      const query = searchInput.value.trim();
+      currentQuery = query;
 
-    let response;
-    if (query) {
-      response = await send(MSG.SEARCH, { query, opts });
-    } else {
-      response = await send(MSG.GET_RECENT, { limit: PAGE_SIZE, offset, opts });
+      let response;
+      if (query) {
+        response = await send(MSG.SEARCH, { query, opts });
+      } else {
+        response = await send(MSG.GET_RECENT, { limit: PAGE_SIZE, offset, opts });
+      }
+
+      const results = response.results || [];
+      if (results.length < PAGE_SIZE) hasMore = false;
+
+      if (append) {
+        currentResults = currentResults.concat(results);
+      } else {
+        currentResults = results;
+      }
+
+      offset = currentResults.length;
+      render();
+    } finally {
+      if (append) loadingMore = false;
     }
-
-    const results = response.results || [];
-    if (results.length < PAGE_SIZE) hasMore = false;
-
-    if (append) {
-      currentResults = currentResults.concat(results);
-    } else {
-      currentResults = results;
-    }
-
-    offset = currentResults.length;
-    render();
   }
 
   // ── Render ──
@@ -84,14 +93,14 @@
     if (!currentResults.length) {
       resultsList.style.display = 'none';
       emptyState.style.display = 'flex';
-      loadMoreBtn.style.display = 'none';
+      scrollSentinel.style.display = 'none';
       searchMeta.textContent = '';
       return;
     }
 
     emptyState.style.display = 'none';
     resultsList.style.display = 'block';
-    loadMoreBtn.style.display = hasMore ? 'block' : 'none';
+    scrollSentinel.style.display = hasMore ? 'block' : 'none';
 
     const terms = currentQuery ? currentQuery.trim().split(/\s+/) : [];
     const count = currentResults.length;
@@ -129,6 +138,7 @@
           <span class="result-domain">${escapeHtml(page.domain || '')}</span>
           <span class="result-visits-count">${visitText}</span>
           ${scoreHtml}
+          <button type="button" class="result-visits-toggle" data-page-id="${page.id}" title="Visit history">Visits</button>
           <span class="result-time">${timeText}</span>
         </div>
         ${desc ? `<div class="result-description">${escapeHtml(desc)}</div>` : ''}
@@ -216,8 +226,6 @@
   const debouncedSearch = debounce(() => runSearch(false), 200);
   searchInput.addEventListener('input', debouncedSearch);
 
-  loadMoreBtn.addEventListener('click', () => runSearch(true));
-
   dateFrom.addEventListener('change', () => runSearch(false));
   dateTo.addEventListener('change', () => runSearch(false));
 
@@ -250,6 +258,16 @@
       return;
     }
 
+    const visitsToggle = e.target.closest('.result-visits-toggle');
+    if (visitsToggle) {
+      e.stopPropagation();
+      const pageId = Number(visitsToggle.dataset.pageId);
+      toggleTimeline(pageId);
+      return;
+    }
+
+    if (e.target.closest('.visit-timeline')) return;
+
     const li = e.target.closest('.result-item');
     if (!li) return;
 
@@ -257,12 +275,7 @@
     const page = currentResults[idx];
     if (!page) return;
 
-    if (e.detail === 2) {
-      // Double click opens the page
-      window.open(page.url, '_blank');
-    } else {
-      toggleTimeline(page.id);
-    }
+    window.open(page.url, '_blank');
   });
 
   // ── Keyboard Navigation ──
@@ -409,6 +422,18 @@
   }
 
   // ── Init ──
+
+  const scrollObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && hasMore && !loadingMore) {
+          runSearch(true);
+        }
+      }
+    },
+    { root: mainContent, rootMargin: '280px', threshold: 0 }
+  );
+  scrollObserver.observe(scrollSentinel);
 
   async function init() {
     await runSearch(false);

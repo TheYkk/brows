@@ -11,7 +11,10 @@
       <input type="text" class="popup-input" id="popupInput"
              placeholder="Search history…" autofocus autocomplete="off" spellcheck="false">
     </div>
-    <ul class="popup-results" id="popupResults"></ul>
+    <div class="popup-results-wrap" id="popupResultsWrap">
+      <ul class="popup-results" id="popupResults"></ul>
+      <div class="popup-scroll-sentinel" id="popupScrollSentinel" aria-hidden="true"></div>
+    </div>
     <div class="popup-footer">
       <a href="#" id="openFull">Open full history</a>
     </div>

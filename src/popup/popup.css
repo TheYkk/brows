@@ -58,11 +58,20 @@ body {
   color: var(--text-muted);
 }
 
-.popup-results {
+.popup-results-wrap {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  list-style: none;
   max-height: 400px;
+}
+
+.popup-results {
+  list-style: none;
+}
+
+.popup-scroll-sentinel {
+  height: 40px;
+  pointer-events: none;
 }
 
 .popup-item {
@@ -155,7 +164,8 @@ body {
   text-decoration: underline;
 }
 
-.popup-empty {
+.popup-results .popup-empty {
+  list-style: none;
   padding: 30px;
   text-align: center;
   color: var(--text-muted);
