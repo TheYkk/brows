@@ -308,6 +308,11 @@ function bulkImport(entries) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type || msg._dst !== 'offscreen') return;
 
+  if (!db) {
+    sendResponse({ error: 'not_ready' });
+    return true;
+  }
+
   const handle = async () => {
     switch (msg.type) {
       case MSG.PAGE_VISITED:
@@ -392,7 +397,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ── Init ──
 
 initDB().then(() => {
-  chrome.runtime.sendMessage({ type: MSG.DB_READY });
+  console.log('[brows] offscreen DB ready');
 }).catch(err => {
   console.error('[brows] DB init failed:', err);
 });

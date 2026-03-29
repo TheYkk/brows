@@ -1,36 +1,49 @@
 importScripts('../shared/messages.js');
 
-let dbReady = false;
-const pendingQueue = [];
-
 // ── Offscreen Document Lifecycle ──
 
 async function ensureOffscreen() {
-  const exists = await chrome.offscreen.hasDocument();
-  if (exists) return;
-  await chrome.offscreen.createDocument({
-    url: chrome.runtime.getURL('src/db/offscreen.html'),
-    reasons: ['WORKERS'],
-    justification: 'SQLite WASM database for history storage',
-  });
+  try {
+    const exists = await chrome.offscreen.hasDocument();
+    if (exists) return;
+  } catch {
+    // hasDocument can throw if called while creation is in flight
+  }
+  try {
+    await chrome.offscreen.createDocument({
+      url: chrome.runtime.getURL('src/db/offscreen.html'),
+      reasons: ['WORKERS'],
+      justification: 'SQLite WASM database for history storage',
+    });
+  } catch (e) {
+    if (!e.message?.includes('Only a single offscreen')) throw e;
+  }
 }
+
+const MAX_RETRIES = 8;
+const RETRY_BASE_MS = 300;
 
 async function sendToDB(message) {
-  await ensureOffscreen();
   const tagged = { ...message, _dst: 'offscreen' };
-  if (!dbReady) {
-    return new Promise((resolve) => {
-      pendingQueue.push({ message: tagged, resolve });
-    });
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    await ensureOffscreen();
+    try {
+      const resp = await chrome.runtime.sendMessage(tagged);
+      if (resp && resp.error === 'not_ready') {
+        await sleep(RETRY_BASE_MS * (attempt + 1));
+        continue;
+      }
+      return resp;
+    } catch {
+      await sleep(RETRY_BASE_MS * (attempt + 1));
+    }
   }
-  return chrome.runtime.sendMessage(tagged);
+  return { error: 'DB unavailable after retries' };
 }
 
-function flushQueue() {
-  while (pendingQueue.length) {
-    const { message, resolve } = pendingQueue.shift();
-    chrome.runtime.sendMessage(message).then(resolve).catch(() => resolve(null));
-  }
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 // ── Tab Duration Tracking ──
@@ -122,14 +135,10 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   }
 });
 
-// ── Metadata from Content Script ──
+// ── Message Router ──
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === MSG.DB_READY) {
-    dbReady = true;
-    flushQueue();
-    return;
-  }
+  if (!msg || !msg.type) return;
 
   if (msg.type === MSG.PAGE_METADATA && sender.tab) {
     sendToDB({ type: MSG.PAGE_METADATA, data: { ...msg.data, url: sender.tab.url } })
@@ -153,17 +162,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason !== 'install') return;
-  await ensureOffscreen();
-
-  // Wait for DB to be ready
-  const waitForDB = () => new Promise((resolve) => {
-    if (dbReady) return resolve();
-    const check = setInterval(() => {
-      if (dbReady) { clearInterval(check); resolve(); }
-    }, 100);
-    setTimeout(() => { clearInterval(check); resolve(); }, 10_000);
-  });
-  await waitForDB();
 
   try {
     const items = await chrome.history.search({
